@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useEffect } from "react";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/hooks/use-auth";
 import { useTotalUnread } from "@/hooks/use-total-unread";
@@ -14,6 +15,7 @@ import {
   Zap,
   Settings,
   LogOut,
+  X,
 } from "lucide-react";
 
 const navItems = [
@@ -29,115 +31,177 @@ const bottomNavItems = [
   { href: "/settings", label: "Settings", icon: Settings },
 ];
 
-export function Sidebar() {
+interface SidebarProps {
+  /** Controlled on mobile by the Header's hamburger button. Ignored on lg+. */
+  open?: boolean;
+  onClose?: () => void;
+}
+
+export function Sidebar({ open = false, onClose }: SidebarProps) {
   const pathname = usePathname();
   const { profile, signOut } = useAuth();
   const totalUnread = useTotalUnread();
 
+  // Close the drawer when route changes — users opened it to navigate,
+  // so once they pick a destination the drawer should get out of the way.
+  useEffect(() => {
+    onClose?.();
+    // Only pathname drives this — onClose identity doesn't need to re-run it.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pathname]);
+
+  // Lock body scroll and allow Escape to close while the drawer is open on
+  // mobile. No-ops on desktop because the sidebar isn't positioned there.
+  useEffect(() => {
+    if (!open) return;
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose?.();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => {
+      document.body.style.overflow = prev;
+      window.removeEventListener("keydown", onKey);
+    };
+  }, [open, onClose]);
+
   return (
-    <aside className="flex h-screen w-60 flex-col border-r border-slate-800 bg-slate-900">
-      {/* Logo */}
-      <div className="flex h-14 items-center gap-2 border-b border-slate-800 px-4">
-        <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-emerald-500">
-          <MessageSquare className="h-4 w-4 text-white" />
-        </div>
-        <span className="text-lg font-semibold text-white">WaCRM</span>
-      </div>
+    <>
+      {/* Backdrop — only exists on mobile and only when open. Clicking
+          it closes the drawer. Hidden from lg+ since the sidebar is
+          part of the main flex row there. */}
+      <button
+        type="button"
+        aria-label="Close menu"
+        onClick={onClose}
+        className={cn(
+          "fixed inset-0 z-30 bg-slate-950/70 backdrop-blur-sm transition-opacity lg:hidden",
+          open
+            ? "pointer-events-auto opacity-100"
+            : "pointer-events-none opacity-0",
+        )}
+      />
 
-      {/* Main navigation */}
-      <nav className="flex-1 overflow-y-auto px-3 py-4">
-        <ul className="flex flex-col gap-1">
-          {navItems.map((item) => {
-            const isActive =
-              pathname === item.href ||
-              (item.href !== "/dashboard" && pathname.startsWith(item.href));
-
-            // Green dot on the Inbox entry when there are unread
-            // conversations AND the user isn't currently in /inbox (they'd
-            // be seeing the unread badges on the conversation list there,
-            // so the sidebar dot would be redundant).
-            const showUnreadDot =
-              item.href === "/inbox" && totalUnread > 0 && !isActive;
-
-            return (
-              <li key={item.href}>
-                <Link
-                  href={item.href}
-                  className={cn(
-                    "flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors",
-                    isActive
-                      ? "bg-emerald-500/10 text-emerald-500"
-                      : "text-slate-400 hover:bg-slate-800 hover:text-white"
-                  )}
-                >
-                  <item.icon className="h-4 w-4" />
-                  <span className="flex-1">{item.label}</span>
-                  {showUnreadDot && (
-                    <span
-                      aria-label={`${totalUnread} unread conversation${totalUnread === 1 ? "" : "s"}`}
-                      className="relative flex h-2 w-2"
-                    >
-                      <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" />
-                      <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-500" />
-                    </span>
-                  )}
-                </Link>
-              </li>
-            );
-          })}
-        </ul>
-
-        {/* Divider */}
-        <div className="my-4 border-t border-slate-800" />
-
-        {/* Bottom nav items */}
-        <ul className="flex flex-col gap-1">
-          {bottomNavItems.map((item) => {
-            const isActive = pathname.startsWith(item.href);
-
-            return (
-              <li key={item.href}>
-                <Link
-                  href={item.href}
-                  className={cn(
-                    "flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors",
-                    isActive
-                      ? "bg-emerald-500/10 text-emerald-500"
-                      : "text-slate-400 hover:bg-slate-800 hover:text-white"
-                  )}
-                >
-                  <item.icon className="h-4 w-4" />
-                  {item.label}
-                </Link>
-              </li>
-            );
-          })}
-        </ul>
-      </nav>
-
-      {/* User section */}
-      <div className="border-t border-slate-800 p-3">
-        <div className="flex items-center gap-3 rounded-lg px-3 py-2">
-          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-emerald-500/10 text-sm font-medium text-emerald-500">
-            {profile?.full_name?.charAt(0)?.toUpperCase() ?? "U"}
-          </div>
-          <div className="min-w-0 flex-1">
-            <p className="truncate text-sm font-medium text-white">
-              {profile?.full_name ?? "User"}
-            </p>
-            <p className="truncate text-xs text-slate-400">
-              {profile?.email ?? ""}
-            </p>
-          </div>
+      <aside
+        className={cn(
+          // Mobile: fixed drawer that slides in from the left.
+          "fixed inset-y-0 left-0 z-40 flex h-full w-64 flex-col border-r border-slate-800 bg-slate-900",
+          "transition-transform duration-200 ease-out will-change-transform",
+          open ? "translate-x-0" : "-translate-x-full",
+          // Desktop: static, always visible — reset all the mobile framing.
+          "lg:static lg:z-0 lg:w-60 lg:translate-x-0 lg:transition-none",
+        )}
+        aria-label="Primary"
+      >
+        {/* Logo row. On mobile we put a close button here; on desktop the
+            close button is hidden since the sidebar is always-visible. */}
+        <div className="flex h-14 shrink-0 items-center justify-between gap-2 border-b border-slate-800 px-4">
+          <Link href="/dashboard" className="flex items-center gap-2">
+            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-emerald-500">
+              <MessageSquare className="h-4 w-4 text-white" />
+            </div>
+            <span className="text-lg font-semibold text-white">WaCRM</span>
+          </Link>
           <button
-            onClick={signOut}
-            className="rounded-md p-1.5 text-slate-400 transition-colors hover:bg-slate-800 hover:text-white"
-            title="Sign out"
+            type="button"
+            onClick={onClose}
+            aria-label="Close menu"
+            className="flex h-9 w-9 items-center justify-center rounded-md text-slate-400 hover:bg-slate-800 hover:text-white lg:hidden"
           >
-            <LogOut className="h-4 w-4" />
+            <X className="h-5 w-5" />
           </button>
         </div>
-      </div>
-    </aside>
+
+        {/* Main navigation */}
+        <nav className="flex-1 overflow-y-auto px-3 py-4">
+          <ul className="flex flex-col gap-1">
+            {navItems.map((item) => {
+              const isActive =
+                pathname === item.href ||
+                (item.href !== "/dashboard" && pathname.startsWith(item.href));
+
+              const showUnreadDot =
+                item.href === "/inbox" && totalUnread > 0 && !isActive;
+
+              return (
+                <li key={item.href}>
+                  <Link
+                    href={item.href}
+                    className={cn(
+                      // Taller on mobile so fingers can hit the row reliably (≥44px).
+                      "flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors lg:py-2",
+                      isActive
+                        ? "bg-emerald-500/10 text-emerald-500"
+                        : "text-slate-400 hover:bg-slate-800 hover:text-white",
+                    )}
+                  >
+                    <item.icon className="h-4 w-4" />
+                    <span className="flex-1">{item.label}</span>
+                    {showUnreadDot && (
+                      <span
+                        aria-label={`${totalUnread} unread conversation${totalUnread === 1 ? "" : "s"}`}
+                        className="relative flex h-2 w-2"
+                      >
+                        <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" />
+                        <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-500" />
+                      </span>
+                    )}
+                  </Link>
+                </li>
+              );
+            })}
+          </ul>
+
+          <div className="my-4 border-t border-slate-800" />
+
+          <ul className="flex flex-col gap-1">
+            {bottomNavItems.map((item) => {
+              const isActive = pathname.startsWith(item.href);
+              return (
+                <li key={item.href}>
+                  <Link
+                    href={item.href}
+                    className={cn(
+                      "flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors lg:py-2",
+                      isActive
+                        ? "bg-emerald-500/10 text-emerald-500"
+                        : "text-slate-400 hover:bg-slate-800 hover:text-white",
+                    )}
+                  >
+                    <item.icon className="h-4 w-4" />
+                    {item.label}
+                  </Link>
+                </li>
+              );
+            })}
+          </ul>
+        </nav>
+
+        {/* User section */}
+        <div className="shrink-0 border-t border-slate-800 p-3">
+          <div className="flex items-center gap-3 rounded-lg px-3 py-2">
+            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-emerald-500/10 text-sm font-medium text-emerald-500">
+              {profile?.full_name?.charAt(0)?.toUpperCase() ?? "U"}
+            </div>
+            <div className="min-w-0 flex-1">
+              <p className="truncate text-sm font-medium text-white">
+                {profile?.full_name ?? "User"}
+              </p>
+              <p className="truncate text-xs text-slate-400">
+                {profile?.email ?? ""}
+              </p>
+            </div>
+            <button
+              onClick={signOut}
+              className="rounded-md p-1.5 text-slate-400 transition-colors hover:bg-slate-800 hover:text-white"
+              title="Sign out"
+            >
+              <LogOut className="h-4 w-4" />
+            </button>
+          </div>
+        </div>
+      </aside>
+    </>
   );
 }

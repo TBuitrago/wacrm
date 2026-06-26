@@ -889,12 +889,30 @@ async function findOrCreateContact(
   )
 
   if (existingContact) {
-    // Update name if it changed
-    if (name && name !== existingContact.name) {
-      await supabaseAdmin()
+    // Protect names that already exist. A contact may have been created
+    // beforehand via the web form + n8n with the person's real name; the
+    // WhatsApp `profile.name` is just whatever display name / nickname the
+    // sender set on their phone and must never clobber that. We therefore
+    // only write the WhatsApp name when the existing contact has NO name
+    // yet (null / empty / whitespace) — i.e. we backfill, never overwrite.
+    const existingName =
+      typeof existingContact.name === 'string'
+        ? existingContact.name.trim()
+        : existingContact.name
+    const hasExistingName = !!existingName
+
+    if (!hasExistingName && name) {
+      const { error: updateError } = await supabaseAdmin()
         .from('contacts')
         .update({ name, updated_at: new Date().toISOString() })
         .eq('id', existingContact.id)
+      if (updateError) {
+        console.error('Error backfilling contact name:', updateError)
+      } else {
+        // Reflect the backfilled name on the in-memory row we return so
+        // downstream consumers see the value we just persisted.
+        existingContact.name = name
+      }
     }
     return { contact: existingContact, wasCreated: false }
   }

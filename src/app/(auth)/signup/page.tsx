@@ -74,13 +74,31 @@ function SignupPageInner() {
       options: {
         data: {
           full_name: fullName,
+          // Forward the invite token so the DB-side invite-only gate
+          // (migration 027 `handle_new_user`) can validate it. Signup
+          // is rejected at the database when this doesn't match a
+          // pending, unexpired invitation — the UI gate below only
+          // renders this form when a token is present, so this is
+          // always set on a real submit.
+          ...(inviteToken ? { invite_token: inviteToken } : {}),
         },
         ...(emailRedirectTo ? { emailRedirectTo } : {}),
       },
     });
 
     if (error) {
-      setError(error.message);
+      // The invite-only DB gate aborts the signup transaction, which
+      // GoTrue surfaces as a generic "Database error saving new user".
+      // Map it to something actionable instead of leaking the raw
+      // Postgres-ish message — the usual cause is an expired/used link.
+      const isGateRejection =
+        /invite-only/i.test(error.message) ||
+        /database error/i.test(error.message);
+      setError(
+        isGateRejection
+          ? "This invitation link is invalid or has expired. Ask the person who invited you for a new one."
+          : error.message,
+      );
       setLoading(false);
       return;
     }
@@ -88,6 +106,42 @@ function SignupPageInner() {
     setSuccess(true);
     setLoading(false);
   };
+
+  // Invite-only registration. Without a valid invite token there's no
+  // self-service signup — show a closed-registration notice instead of
+  // the form. This is UX only; the real enforcement is the DB gate in
+  // migration 027 (`handle_new_user`), which rejects any signup not
+  // backed by a valid invitation even on a direct API call.
+  if (!inviteToken) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-background px-4">
+        <Card className="w-full max-w-md border-border bg-card">
+          <CardHeader className="items-center text-center">
+            <div className="mb-2 flex h-12 w-12 items-center justify-center rounded-xl bg-primary/10">
+              <UsersRound className="h-6 w-6 text-primary" />
+            </div>
+            <CardTitle className="text-xl text-foreground">
+              Registration is invite-only
+            </CardTitle>
+            <CardDescription className="text-muted-foreground">
+              New accounts can only be created from an invitation link. Ask
+              your account admin to invite you, then open the link they send.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <Link href="/login">
+              <Button
+                variant="outline"
+                className="w-full border-border text-muted-foreground hover:bg-muted hover:text-foreground"
+              >
+                Back to sign in
+              </Button>
+            </Link>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
 
   if (success) {
     return (

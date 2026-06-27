@@ -106,6 +106,13 @@ interface MessageThreadProps {
    */
   contactPanelOpen?: boolean;
   onToggleContactPanel?: () => void;
+  /**
+   * Opens the full contact detail sheet (same one Contacts uses) for the
+   * active contact. Wired to a click on the header avatar+name. Optional
+   * so existing callers keep working — when omitted, the name renders as
+   * static text exactly as before.
+   */
+  onOpenContactDetail?: () => void;
 }
 
 function formatDateSeparator(dateStr: string): string {
@@ -164,6 +171,7 @@ export function MessageThread({
   onRefresh,
   contactPanelOpen,
   onToggleContactPanel,
+  onOpenContactDetail,
 }: MessageThreadProps) {
   const { user } = useAuth();
   const { getPresence, getRow, now } = usePresence();
@@ -834,13 +842,39 @@ export function MessageThread({
               <ArrowLeft className="h-5 w-5" />
             </button>
           )}
-          <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full bg-muted text-sm font-medium text-foreground">
-            {displayName.charAt(0).toUpperCase()}
-          </div>
-          <div className="min-w-0">
-            <h2 className="truncate text-sm font-semibold text-foreground">{displayName}</h2>
-            <p className="truncate text-xs text-muted-foreground">{contact.phone}</p>
-          </div>
+          {/* Avatar + name/phone. When `onOpenContactDetail` is wired up,
+              this whole block becomes a button that opens the full contact
+              sheet (same as Contacts). Deliberately excludes the back arrow
+              and the session-timer badge so neither triggers the sheet. */}
+          {onOpenContactDetail ? (
+            <button
+              type="button"
+              onClick={onOpenContactDetail}
+              aria-label={`View ${displayName} details`}
+              title="View contact details"
+              className="flex min-w-0 items-center gap-2 rounded-md px-1 py-0.5 -mx-1 text-left transition-colors hover:bg-muted sm:gap-3"
+            >
+              <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full bg-muted text-sm font-medium text-foreground">
+                {displayName.charAt(0).toUpperCase()}
+              </div>
+              <div className="min-w-0">
+                <h2 className="truncate text-sm font-semibold text-foreground hover:underline">
+                  {displayName}
+                </h2>
+                <p className="truncate text-xs text-muted-foreground">{contact.phone}</p>
+              </div>
+            </button>
+          ) : (
+            <>
+              <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full bg-muted text-sm font-medium text-foreground">
+                {displayName.charAt(0).toUpperCase()}
+              </div>
+              <div className="min-w-0">
+                <h2 className="truncate text-sm font-semibold text-foreground">{displayName}</h2>
+                <p className="truncate text-xs text-muted-foreground">{contact.phone}</p>
+              </div>
+            </>
+          )}
           {/* Session timer badge — hidden on the narrowest phones so
               the name + back arrow keep their room. */}
           <Badge

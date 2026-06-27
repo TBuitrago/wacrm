@@ -8,6 +8,7 @@ import { useRealtime } from "@/hooks/use-realtime";
 import { ConversationList } from "@/components/inbox/conversation-list";
 import { MessageThread } from "@/components/inbox/message-thread";
 import { ContactSidebar } from "@/components/inbox/contact-sidebar";
+import { ContactDetailView } from "@/components/contacts/contact-detail-view";
 import { toast } from "sonner";
 import { WifiOff } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -30,6 +31,9 @@ export default function InboxPage() {
   const [activeConversation, setActiveConversation] =
     useState<Conversation | null>(null);
   const [activeContact, setActiveContact] = useState<Contact | null>(null);
+  // Controls the full contact detail sheet (the same one Contacts uses),
+  // opened by clicking the contact name in the thread header.
+  const [contactDetailOpen, setContactDetailOpen] = useState(false);
   const [messages, setMessages] = useState<Message[]>([]);
   const [whatsappConnected, setWhatsappConnected] = useState<boolean | null>(
     null
@@ -537,6 +541,35 @@ export default function InboxPage() {
     [activeConversation]
   );
 
+  // Open the full contact detail sheet for the active contact. Guarded so
+  // the sheet never opens without a contact to render.
+  const handleOpenContactDetail = useCallback(() => {
+    if (activeContact) setContactDetailOpen(true);
+  }, [activeContact]);
+
+  // After an edit in the detail sheet, re-read the contact so the thread
+  // header, the right-hand ContactSidebar, and the conversation list all
+  // reflect the change (name/company/etc.). Replacing the activeContact
+  // reference also re-runs the sidebar's contact-keyed fetch effect.
+  const refreshActiveContact = useCallback(async () => {
+    if (!activeContact) return;
+    const supabase = createClient();
+    const { data } = await supabase
+      .from("contacts")
+      .select("*")
+      .eq("id", activeContact.id)
+      .single();
+    if (data) {
+      const fresh = data as Contact;
+      setActiveContact(fresh);
+      setConversations((prev) =>
+        prev.map((c) =>
+          c.contact?.id === fresh.id ? { ...c, contact: fresh } : c,
+        ),
+      );
+    }
+  }, [activeContact]);
+
   // On mobile (<lg) we show a SINGLE pane — either the list or the
   // thread — rather than cramming both side-by-side. Selecting a
   // conversation slides the thread in; the thread's back button pops
@@ -606,6 +639,7 @@ export default function InboxPage() {
             onRefresh={handleManualRefresh}
             contactPanelOpen={contactPanelOpen}
             onToggleContactPanel={handleToggleContactPanel}
+            onOpenContactDetail={handleOpenContactDetail}
           />
         </div>
 
@@ -619,6 +653,17 @@ export default function InboxPage() {
           </div>
         )}
       </div>
+
+      {/* Full contact detail sheet — same component Contacts uses. Opened by
+          clicking the contact name in the thread header; works on mobile and
+          desktop (overlay), covering the mobile case where the right-hand
+          ContactSidebar is never shown. */}
+      <ContactDetailView
+        open={contactDetailOpen}
+        onOpenChange={setContactDetailOpen}
+        contactId={activeContact?.id ?? null}
+        onUpdated={refreshActiveContact}
+      />
     </div>
   );
 }
